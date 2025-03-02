@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { isLockfile } from '$lib/diff/lockfiles';
 	import { splitDiffIntoHunks } from '$lib/diffParsing';
+	import Button from '@gitbutler/ui/Button.svelte';
 	import HunkDiff, { type LineClickParams } from '@gitbutler/ui/HunkDiff.svelte';
 	import FileIcon from '@gitbutler/ui/file/FileIcon.svelte';
 	import type { DiffSection } from '@gitbutler/shared/branches/types';
 	import type { ContentSection, LineSelector } from '@gitbutler/ui/utils/diffParsing';
 
 	interface Props {
+		isLoggedIn: boolean;
 		section: DiffSection;
 		selectedSha: string | undefined;
 		selectedLines: LineSelector[];
@@ -16,6 +18,7 @@
 		onQuoteSelection: () => void;
 	}
 	const {
+		isLoggedIn,
 		section,
 		toggleDiffLine,
 		selectedSha,
@@ -30,7 +33,12 @@
 		return isLockfile(section.newPath);
 	});
 
-	const hunks = $derived(section.diffPatch ? splitDiffIntoHunks(section.diffPatch) : []);
+	let displayLockHunks = $state<boolean>(false);
+
+	const hunks = $derived.by(() => {
+		if (!section.diffPatch) return [];
+		return splitDiffIntoHunks(section.diffPatch);
+	});
 	const filePath = $derived(section.newPath || 'unknown');
 
 	function handleLineClick(params: LineClickParams) {
@@ -38,8 +46,6 @@
 	}
 
 	const selectedLines = $derived(selectedSha === section.diffSha ? lines : []);
-
-	let displayLockHunks = $state<boolean>(false);
 </script>
 
 <div class="diff-section">
@@ -47,21 +53,27 @@
 		<FileIcon fileName={filePath} size={16} />
 		<p title={filePath} class="text-12 text-body file-name">{filePath}</p>
 	</div>
-	{#each hunks as hunkStr}
-		<HunkDiff
-			filePath={section.newPath || 'unknown'}
-			{hunkStr}
-			diffLigatures={false}
-			{selectedLines}
-			onLineClick={handleLineClick}
-			{onCopySelection}
-			{onQuoteSelection}
-			{clearLineSelection}
-			isHidden={!lockFile && !displayLockHunks}
-			whyHidden="Lock files are hidden by default"
-			onShowDiffClick={() => (displayLockHunks = true)}
-		/>
-	{/each}
+	{#if lockFile && !displayLockHunks}
+		<div class="lock-files-hidden-by-default">
+			<p class="text-12 hidden-lock-file-message">Lock files are hidden by default</p>
+			<Button kind="outline" icon="eye-shown" onclick={() => (displayLockHunks = true)}
+				>Show diff</Button
+			>
+		</div>
+	{:else}
+		{#each hunks as hunkStr}
+			<HunkDiff
+				filePath={section.newPath || 'unknown'}
+				{hunkStr}
+				diffLigatures={false}
+				{selectedLines}
+				onLineClick={handleLineClick}
+				{onCopySelection}
+				onQuoteSelection={isLoggedIn ? onQuoteSelection : undefined}
+				{clearLineSelection}
+			/>
+		{/each}
+	{/if}
 </div>
 
 <style lang="postcss">
@@ -73,8 +85,14 @@
 		gap: 14px;
 		align-self: stretch;
 
-		&:not(:last-child) {
+		background-color: var(--clr-bg-1);
+		border-left: 1px solid var(--clr-border-2);
+		border-right: 1px solid var(--clr-border-2);
+
+		&:last-child {
 			border-bottom: 1px solid var(--clr-border-2);
+			border-bottom-right-radius: var(--radius-ml);
+			border-bottom-left-radius: var(--radius-ml);
 		}
 	}
 
@@ -95,12 +113,14 @@
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		padding: 16px 8px;
+		padding: 40px 24px;
 		border: 1px solid var(--clr-border-2);
-		border-radius: var(--radius-s);
+		border-radius: var(--radius-ml);
+		background: var(--clr-bg-1-muted);
 	}
 
 	.hidden-lock-file-message {
 		color: var(--clr-text-2);
+		text-align: center;
 	}
 </style>
