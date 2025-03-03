@@ -11,6 +11,14 @@ export class ChatMinimize {
 		return event.key === SHORTCUT_KEY && (event.ctrlKey || event.metaKey);
 	}
 
+	maximize() {
+		this._minimize = false;
+	}
+
+	minimize() {
+		this._minimize = true;
+	}
+
 	get value() {
 		return this._minimize;
 	}

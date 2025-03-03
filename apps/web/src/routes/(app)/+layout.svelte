@@ -5,8 +5,6 @@
 	import { UserService } from '$lib/user/userService';
 	import { BranchService } from '@gitbutler/shared/branches/branchService';
 	import { LatestBranchLookupService } from '@gitbutler/shared/branches/latestBranchLookupService';
-	import { PatchEventsService } from '@gitbutler/shared/branches/patchEventsService';
-	import { PatchService } from '@gitbutler/shared/branches/patchService';
 	import { ChatChannelsService } from '@gitbutler/shared/chat/chatChannelsService';
 	import { getContext } from '@gitbutler/shared/context';
 	import { FeedService } from '@gitbutler/shared/feeds/service';
@@ -14,6 +12,8 @@
 	import { OrganizationService } from '@gitbutler/shared/organizations/organizationService';
 	import { ProjectService } from '@gitbutler/shared/organizations/projectService';
 	import { RepositoryIdLookupService } from '@gitbutler/shared/organizations/repositoryIdLookupService';
+	import { PatchEventsService } from '@gitbutler/shared/patchEvents/patchEventsService';
+	import { PatchService } from '@gitbutler/shared/patches/patchService';
 	import { AppState } from '@gitbutler/shared/redux/store.svelte';
 	import { NotificationSettingsService } from '@gitbutler/shared/settings/notificationSettingsService';
 	import { UserService as NewUserService } from '@gitbutler/shared/users/userService';
@@ -21,6 +21,7 @@
 	import { setContext, type Snippet } from 'svelte';
 	import { Toaster } from 'svelte-french-toast';
 	import '$lib/styles/global.css';
+	import { page } from '$app/state';
 	import { env } from '$env/dynamic/public';
 
 	const CHAT_NOTFICATION_SOUND = '/sounds/pop.mp3';
@@ -88,12 +89,17 @@
 			location.href = href;
 		}
 	});
+
+	const isCommitPage = $derived(page.url.pathname.includes('/commit/'));
 </script>
 
 <Toaster />
 
 <div class="app">
-	<Navigation />
+	{#if !isCommitPage}
+		<Navigation />
+	{/if}
+
 	<main>
 		{@render children?.()}
 	</main>

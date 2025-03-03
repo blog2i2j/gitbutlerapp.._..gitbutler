@@ -24,6 +24,7 @@
 	import { SettingsService } from '$lib/config/appSettingsV2';
 	import { GitConfigService } from '$lib/config/gitConfigService';
 	import { FileService } from '$lib/files/fileService';
+	import { ButRequestDetailsService } from '$lib/forge/butRequestDetailsService';
 	import {
 		createGitHubUserServiceStore as createGitHubUserServiceStore,
 		GitHubAuthenticationService,
@@ -52,12 +53,12 @@
 	import { WorktreeService } from '$lib/worktree/worktreeService.svelte';
 	import { BranchService as CloudBranchService } from '@gitbutler/shared/branches/branchService';
 	import { LatestBranchLookupService } from '@gitbutler/shared/branches/latestBranchLookupService';
-	import { PatchService as CloudPatchService } from '@gitbutler/shared/branches/patchService';
 	import { FeedService } from '@gitbutler/shared/feeds/service';
 	import { HttpClient } from '@gitbutler/shared/network/httpClient';
 	import { OrganizationService } from '@gitbutler/shared/organizations/organizationService';
 	import { ProjectService as CloudProjectService } from '@gitbutler/shared/organizations/projectService';
 	import { RepositoryIdLookupService } from '@gitbutler/shared/organizations/repositoryIdLookupService';
+	import { PatchService as CloudPatchService } from '@gitbutler/shared/patches/patchService';
 	import { AppDispatch, AppState } from '@gitbutler/shared/redux/store.svelte';
 	import { WebRoutesService } from '@gitbutler/shared/routing/webRoutes.svelte';
 	import { reactive } from '@gitbutler/shared/storeUtils';
@@ -100,6 +101,10 @@
 	const diffService = new DiffService(clientState);
 	const shortcutService = new ShortcutService(data.tauri);
 	const commitService = new CommitService();
+	const butRequestDetailsService = new ButRequestDetailsService(
+		cloudBranchService,
+		latestBranchLookupService
+	);
 
 	shortcutService.listen();
 
@@ -122,6 +127,7 @@
 	setContext(SettingsService, data.settingsService);
 	setContext(FileService, data.fileService);
 	setContext(CommitService, commitService);
+	setContext(ButRequestDetailsService, butRequestDetailsService);
 
 	// Setters do not need to be reactive since `data` never updates
 	setSecretsService(data.secretsService);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ButRequestDetailsService } from '$lib/forge/butRequestDetailsService';
 	import { ProjectService } from '$lib/project/projectService';
 	import { sleep } from '$lib/utils/sleep';
 	import BranchStatusBadge from '@gitbutler/shared/branches/BranchStatusBadge.svelte';
@@ -6,8 +7,8 @@
 	import { getBranchReview } from '@gitbutler/shared/branches/branchesPreview.svelte';
 	import { lookupLatestBranchUuid } from '@gitbutler/shared/branches/latestBranchLookup.svelte';
 	import { LatestBranchLookupService } from '@gitbutler/shared/branches/latestBranchLookupService';
-	import { getContributorsWithAvatars } from '@gitbutler/shared/branches/types';
 	import { inject } from '@gitbutler/shared/context';
+	import { getContributorsWithAvatars } from '@gitbutler/shared/contributors';
 	import Loading from '@gitbutler/shared/network/Loading.svelte';
 	import { and, combine, isFound, isNotFound, map } from '@gitbutler/shared/network/loadable';
 	import { ProjectService as CloudProjectService } from '@gitbutler/shared/organizations/projectService';
@@ -31,14 +32,16 @@
 		cloudProjectService,
 		latestBranchLookupService,
 		cloudBranchService,
-		webRoutes
+		webRoutes,
+		butRequestDetailsService
 	] = inject(
 		ProjectService,
 		AppState,
 		CloudProjectService,
 		LatestBranchLookupService,
 		CloudBranchService,
-		WebRoutesService
+		WebRoutesService,
+		ButRequestDetailsService
 	);
 
 	const project = projectService.project;
@@ -78,6 +81,17 @@
 		return () => {
 			options.keepPolling = false;
 		};
+	});
+
+	$effect(() => {
+		if (!isFound(cloudProject?.current)) return;
+		if (!isFound(cloudBranch?.current)) return;
+
+		butRequestDetailsService.updateDetails(
+			cloudProject.current.value.owner,
+			cloudProject.current.value.slug,
+			cloudBranch.current.value.branchId
+		);
 	});
 
 	async function pollWhileNotFound(reviewId: string, options: { keepPolling: boolean }) {

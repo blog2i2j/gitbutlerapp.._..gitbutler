@@ -1,10 +1,11 @@
 <script lang="ts">
 	import DiffSection from './DiffSection.svelte';
-	import { type Section } from '@gitbutler/shared/branches/types';
+	import { type Section } from '@gitbutler/shared/patches/types';
 	import type { LineClickParams } from '@gitbutler/ui/HunkDiff.svelte';
 	import type { ContentSection, LineSelector } from '@gitbutler/ui/utils/diffParsing';
 
 	interface Props {
+		isLoggedIn: boolean;
 		section: Section;
 		selectedSha: string | undefined;
 		selectedLines: LineSelector[];
@@ -15,6 +16,7 @@
 	}
 
 	const {
+		isLoggedIn,
 		section,
 		toggleDiffLine,
 		selectedSha,
@@ -27,6 +29,7 @@
 
 {#if section.sectionType === 'diff'}
 	<DiffSection
+		{isLoggedIn}
 		{section}
 		{toggleDiffLine}
 		{selectedSha}

@@ -1,4 +1,6 @@
 <script lang="ts" module>
+	import { isTouchDevice } from '$lib/utils/browserAgent';
+
 	export function getHunkLineId(rowEncodedId: DiffFileLineId): string {
 		return `hunk-line-${rowEncodedId}`;
 	}
@@ -23,7 +25,7 @@
 		lineSelection: LineSelection;
 		tabSize: number;
 		wrapText: boolean;
-		hasSelectedLines: boolean;
+		diffFont?: string;
 		numberHeaderWidth?: number;
 		onQuoteSelection?: () => void;
 		onCopySelection?: () => void;
@@ -37,7 +39,7 @@
 		lineSelection,
 		tabSize,
 		wrapText,
-		hasSelectedLines,
+		diffFont = 'var(--fontfamily-mono)',
 		clearLineSelection,
 		numberHeaderWidth,
 		onQuoteSelection,
@@ -45,11 +47,45 @@
 		hoveringOverTable
 	}: Props = $props();
 
+	const touchDevice = isTouchDevice();
+
 	let rowElement = $state<HTMLTableRowElement>();
 	let overflowMenuHeight = $state<number>(0);
 
+	const rowTop = $derived(rowElement?.getBoundingClientRect().top);
+	const rowLeft = $derived(rowElement?.getBoundingClientRect().left);
 	const rowWidth = $derived(rowElement?.getBoundingClientRect().width);
 	const rowHeight = $derived(rowElement?.getBoundingClientRect().height);
+
+	$effect(() => {
+		if (
+			lineSelection.touchStart !== undefined &&
+			rowTop !== undefined &&
+			rowLeft !== undefined &&
+			numberHeaderWidth !== undefined &&
+			rowHeight !== undefined
+		) {
+			const rowTouchStartY =
+				lineSelection.touchStart.y > rowTop && lineSelection.touchStart.y < rowTop + rowHeight;
+			const rowTouchStartX =
+				lineSelection.touchStart.x > rowLeft &&
+				lineSelection.touchStart.x < rowLeft + numberHeaderWidth;
+			if (rowTouchStartY && rowTouchStartX) {
+				lineSelection.touchSelectionStart(row, idx);
+			}
+
+			if (lineSelection.touchMove !== undefined) {
+				const rowTouchEndsY =
+					lineSelection.touchMove.y > rowTop && lineSelection.touchMove.y < rowTop + rowHeight;
+				const rowTouchEndsX =
+					lineSelection.touchMove.x > rowLeft &&
+					lineSelection.touchMove.x < rowLeft + numberHeaderWidth;
+				if (rowTouchEndsY && rowTouchEndsX) {
+					lineSelection.touchSelectionEnd(row, idx);
+				}
+			}
+		}
+	});
 </script>
 
 {#snippet countColumn(row: Row, side: CountColumnSide, idx: number)}
@@ -76,6 +112,7 @@
 	class="table__row"
 	class:selected={row.isSelected}
 	data-no-drag
+	style="--diff-font: {diffFont};"
 >
 	{@render countColumn(row, CountColumnSide.Before, idx)}
 	{@render countColumn(row, CountColumnSide.After, idx)}
@@ -89,7 +126,7 @@
 		class:selected={row.isSelected}
 		class:is-last={row.isLast}
 		onclick={() => {
-			if (!row.isSelected && hasSelectedLines) clearLineSelection?.();
+			if (!row.isSelected) clearLineSelection?.();
 		}}
 	>
 		<div class="table__row-header">
@@ -106,18 +143,21 @@
 				<div
 					bind:clientHeight={overflowMenuHeight}
 					class="table__selected-row-overflow-menu"
-					class:hovered={hoveringOverTable}
+					class:visible={hoveringOverTable || touchDevice}
 					style="--number-col-width: {numberHeaderWidth}px; --height: {rowHeight}px; --overflow-menu-height: {overflowMenuHeight}px;"
 				>
-					<div class="button-wrapper">
-						<Button
-							icon="text-quote"
-							style="neutral"
-							kind="ghost"
-							size="button"
-							onclick={onQuoteSelection}
-						/>
-					</div>
+					{#if onQuoteSelection}
+						<div class="button-wrapper">
+							<Button
+								icon="text-quote"
+								style="neutral"
+								kind="ghost"
+								size="button"
+								onclick={onQuoteSelection}
+							/>
+						</div>
+					{/if}
+
 					<div class="button-wrapper">
 						<Button
 							icon="copy-small"
@@ -141,6 +181,7 @@
 		padding: 0;
 		margin: 0;
 		user-select: none;
+		font-family: var(--diff-font);
 	}
 
 	.table__textContent {
@@ -208,7 +249,7 @@
 			border-right: 1px solid var(--clr-border-2);
 		}
 
-		&.hovered {
+		&.visible {
 			opacity: 1;
 			pointer-events: all;
 		}
@@ -224,6 +265,7 @@
 		text-align: right;
 		vertical-align: top;
 		user-select: none;
+		touch-action: none;
 
 		position: sticky;
 		left: calc(var(--number-col-width));
