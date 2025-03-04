@@ -1,23 +1,25 @@
 <script lang="ts">
 	import { ChatMinimize } from '$lib/chat/minimize.svelte';
 	import ChatComponent from '$lib/components/ChatComponent.svelte';
+	import Navigation from '$lib/components/Navigation.svelte';
 	import ChangeActionButton from '$lib/components/review/ChangeActionButton.svelte';
 	import ChangeNavigator from '$lib/components/review/ChangeNavigator.svelte';
 	import ReviewInfo from '$lib/components/review/ReviewInfo.svelte';
 	import ReviewSections from '$lib/components/review/ReviewSections.svelte';
 	import DiffLineSelection from '$lib/diff/lineSelection.svelte';
+	import { updateFavIcon } from '$lib/utils/faviconUtils';
 	import { UserService } from '$lib/user/userService';
 	import { BranchService } from '@gitbutler/shared/branches/branchService';
 	import { getBranchReview } from '@gitbutler/shared/branches/branchesPreview.svelte';
 	import { lookupLatestBranchUuid } from '@gitbutler/shared/branches/latestBranchLookup.svelte';
 	import { LatestBranchLookupService } from '@gitbutler/shared/branches/latestBranchLookupService';
-	import { PatchService } from '@gitbutler/shared/branches/patchService';
-	import { getPatch, getPatchSections } from '@gitbutler/shared/branches/patchesPreview.svelte';
 	import { getContext } from '@gitbutler/shared/context';
 	import Loading from '@gitbutler/shared/network/Loading.svelte';
-	import { combine, map } from '@gitbutler/shared/network/loadable';
+	import { combine, isFound, map } from '@gitbutler/shared/network/loadable';
 	import { lookupProject } from '@gitbutler/shared/organizations/repositoryIdLookupPreview.svelte';
 	import { RepositoryIdLookupService } from '@gitbutler/shared/organizations/repositoryIdLookupService';
+	import { PatchService } from '@gitbutler/shared/patches/patchService';
+	import { getPatch, getPatchSections } from '@gitbutler/shared/patches/patchesPreview.svelte';
 	import { AppState } from '@gitbutler/shared/redux/store.svelte';
 	import {
 		WebRoutesService,
@@ -27,7 +29,7 @@
 	import Markdown from '@gitbutler/ui/markdown/Markdown.svelte';
 	import { goto } from '$app/navigation';
 
-	const DESCRIPTION_PLACE_HOLDER = 'No description provided';
+	const DESCRIPTION_PLACE_HOLDER = '_No commit message description provided_';
 
 	interface Props {
 		data: ProjectReviewCommitParameters;
@@ -44,7 +46,11 @@
 	const userService = getContext(UserService);
 	const user = $derived(userService.user);
 	const chatMinimizer = new ChatMinimize();
-	const diffLineSelection = new DiffLineSelection();
+	const diffLineSelection = new DiffLineSelection(chatMinimizer);
+
+	const chatTabletModeBreakpoint = 1024;
+	let isChatTabletMode = $state(window.innerWidth < chatTabletModeBreakpoint);
+	let isTabletModeEntered = $state(false);
 
 	const repositoryId = $derived(
 		lookupProject(appState, repositoryIdLookupService, data.ownerSlug, data.projectSlug)
@@ -88,21 +94,34 @@
 		})
 	);
 
-	let header = $state<HTMLDivElement>();
+	let headerEl = $state<HTMLDivElement>();
+	let headerHeight = $state(0);
 	let headerIsStuck = $state(false);
+	let metaSectionHidden = $state(false);
+	const HEADER_STUCK_THRESHOLD = 4;
 
-	window.onscroll = () => {
-		if (header) {
-			const top = header.getBoundingClientRect().top;
-			if (!headerIsStuck && top <= 0) {
+	let metaSectionEl = $state<HTMLDivElement>();
+
+	function handleScroll() {
+		if (headerEl) {
+			const top = headerEl.getBoundingClientRect().top;
+			if (!headerIsStuck && top <= HEADER_STUCK_THRESHOLD) {
 				headerIsStuck = true;
 			}
 
-			if (headerIsStuck && top > 0) {
+			if (headerIsStuck && top > HEADER_STUCK_THRESHOLD) {
 				headerIsStuck = false;
 			}
 		}
-	};
+
+		if (metaSectionEl && headerEl) {
+			metaSectionHidden =
+				metaSectionEl.getBoundingClientRect().top -
+					headerEl.clientHeight +
+					metaSectionEl.clientHeight <
+				0;
+		}
+	}
 
 	function scrollToTop() {
 		window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -127,40 +146,93 @@
 			return;
 		}
 	}
+
+	function handleResize() {
+		isChatTabletMode = window.innerWidth < chatTabletModeBreakpoint;
+	}
+
+	$effect(() => {
+		if (isChatTabletMode && !chatMinimizer.value) {
+			document.body.style.overflow = 'hidden';
+		} else {
+			document.body.style.overflow = '';
+		}
+	});
+
+	$effect(() => {
+		if (isChatTabletMode && !isTabletModeEntered) {
+			isTabletModeEntered = true;
+			chatMinimizer.minimize();
+		} else if (!isChatTabletMode && isTabletModeEntered) {
+			isTabletModeEntered = false;
+			chatMinimizer.maximize();
+		}
+	});
+
+	$effect(() => {
+		if (isFound(patch?.current)) {
+			updateFavIcon(patch.current.value?.reviewStatus);
+		}
+	});
 </script>
 
-<svelte:window onkeydown={handleKeyDown} />
+<svelte:head>
+	{#if isFound(patch?.current)}
+		<title>🔬{patch.current.value?.title}</title>
+		<meta property="og:title" content="Review: {patch.current.value?.title}" />
+		<meta property="og:description" content={patch.current.value?.description} />
+	{:else}
+		<title>GitButler Review</title>
+		<meta property="og:title" content="Butler Review: {data.ownerSlug}/{data.projectSlug}" />
+		<meta property="og:description" content="GitButler code review" />
+	{/if}
+</svelte:head>
+
+<svelte:window onkeydown={handleKeyDown} onscroll={handleScroll} onresize={handleResize} />
 
 <div class="review-page" class:column={chatMinimizer.value}>
 	<Loading loadable={combine([patch?.current, repositoryId.current, branchUuid?.current])}>
 		{#snippet children([patch, repositoryId, branchUuid])}
-			<div class="review-main-content" class:expand={chatMinimizer.value}>
-				<div class="review-main__header" bind:this={header}>
+			<div class="review-main" class:expand={chatMinimizer.value}>
+				<Navigation />
+
+				<div
+					class="review-main__header"
+					bind:this={headerEl}
+					bind:clientHeight={headerHeight}
+					class:stucked={headerIsStuck}
+					class:bottom-line={headerIsStuck && !metaSectionHidden}
+				>
 					<div class="review-main__title-wrapper">
 						{#if headerIsStuck}
-							<Button kind="outline" icon="arrow-top" onclick={scrollToTop} />
+							<div class="scroll-to-top">
+								<Button kind="outline" icon="arrow-top" onclick={scrollToTop} />
+							</div>
 						{/if}
-						<h3 class="text-18 text-bold review-main-content-title">{patch.title}</h3>
-					</div>
-
-					<div class="review-main-content__patch-navigator">
-						{#if patchIds !== undefined}
-							<ChangeNavigator {goToPatch} currentPatchId={patch.changeId} {patchIds} />
-						{/if}
-
-						{#if branchUuid !== undefined && isPatchAuthor === false}
-							<ChangeActionButton {branchUuid} {patch} isUserLoggedIn={!!$user} />
-						{/if}
+						<h3 class="text-18 text-bold review-main-title">{patch.title}</h3>
 					</div>
 				</div>
 
-				<p class="review-main-content-description">
-					<Markdown content={patch.description?.trim() || DESCRIPTION_PLACE_HOLDER} />
-				</p>
+				<div class="review-main__patch-navigator">
+					{#if patchIds !== undefined}
+						<ChangeNavigator {goToPatch} currentPatchId={patch.changeId} {patchIds} />
+					{/if}
 
-				<ReviewInfo projectId={repositoryId} {patch} />
+					{#if branchUuid !== undefined && isPatchAuthor === false}
+						<ChangeActionButton {branchUuid} {patch} isUserLoggedIn={!!$user} />
+					{/if}
+				</div>
+
+				<div class="review-main__meta" bind:this={metaSectionEl}>
+					<ReviewInfo projectId={repositoryId} {patch} />
+					<p class="review-main-description">
+						<Markdown content={patch.description?.trim() || DESCRIPTION_PLACE_HOLDER} />
+					</p>
+				</div>
+
 				<ReviewSections
 					{patch}
+					headerShift={headerHeight}
 					patchSections={patchSections?.current}
 					toggleDiffLine={(f, s, p) => diffLineSelection.toggle(f, s, p)}
 					selectedSha={diffLineSelection.selectedSha}
@@ -175,18 +247,19 @@
 				<div
 					class="review-chat"
 					class:minimized={chatMinimizer.value}
-					class:full-screen={!chatMinimizer.value && headerIsStuck}
+					class:tablet-mode={isChatTabletMode}
 				>
 					<ChatComponent
 						{isPatchAuthor}
 						isUserLoggedIn={!!$user}
 						{branchUuid}
+						isTabletMode={isChatTabletMode}
 						messageUuid={data.messageUuid}
 						projectId={repositoryId}
 						branchId={data.branchId}
 						changeId={data.changeId}
 						minimized={chatMinimizer.value}
-						toggleMinimized={() => chatMinimizer.toggle()}
+						onMinimizeToggle={() => chatMinimizer.toggle()}
 						diffSelection={diffLineSelection.diffSelection}
 						clearDiffSelection={() => diffLineSelection.clear()}
 					/>
@@ -212,12 +285,12 @@
 		}
 	}
 
-	.review-main-content {
+	.review-main {
 		display: flex;
 		flex-direction: column;
-		gap: 24px;
 		width: 100%;
 		max-width: 50%;
+		flex-shrink: 0;
 
 		&.expand {
 			max-width: 100%;
@@ -230,18 +303,46 @@
 	}
 
 	.review-main__header {
+		z-index: var(--z-ground);
+		position: sticky;
+		top: 0;
+
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
 
-		z-index: var(--z-floating);
-		position: sticky;
-		top: 0;
-
-		background-color: var(--clr-bg);
+		background-color: var(--clr-bg-2);
 		margin-top: -24px;
-		padding-top: 24px;
-		padding-bottom: 8px;
+		padding: 24px 0 12px;
+		border-bottom: 1px solid transparent;
+
+		transition:
+			border-bottom var(--transition-medium),
+			padding var(--transition-medium);
+
+		&.bottom-line {
+			border-bottom: 1px solid var(--clr-border-2);
+		}
+
+		&.stucked {
+			padding: 16px 0;
+		}
+	}
+
+	.scroll-to-top {
+		display: flex;
+		animation: fadeInScrollButton var(--transition-medium) forwards;
+	}
+
+	@keyframes fadeInScrollButton {
+		from {
+			opacity: 0;
+			width: 0;
+		}
+		to {
+			opacity: 1;
+			min-width: var(--size-button);
+		}
 	}
 
 	.review-main__title-wrapper {
@@ -250,38 +351,54 @@
 		gap: 16px;
 	}
 
-	.review-main-content-title {
+	.review-main-title {
 		color: var(--clr-text-1);
 	}
 
-	.review-main-content__patch-navigator {
+	.review-main__patch-navigator {
 		display: flex;
 		gap: 6px;
+		padding-bottom: 24px;
+
 		@media (--tablet-viewport) {
 			flex-wrap: wrap;
 			gap: 12px;
 		}
 	}
 
-	.review-main-content-description {
-		color: var(--text-1, #1a1614);
-		font-family: var(--fontfamily-mono, 'Geist Mono');
-		font-size: 12px;
+	.review-main__meta {
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		margin-bottom: 10px;
+	}
+
+	.review-main-description {
+		color: var(--text-1);
+		font-size: 13px;
 		font-style: normal;
-		font-weight: var(--weight-regular, 400);
-		line-height: 160%; /* 19.2px */
+		line-height: 180%;
+		padding: 16px;
+		background: var(--clr-bg-1);
+		font-family: var(--fontfamily-default);
+		border-radius: 10px;
+		border: 1px solid var(--clr-border-2);
 	}
 
 	.review-chat {
-		width: 100%;
-		--top-nav-offset: 84px;
-		--bottom-margin: 10px;
-		top: var(--top-nav-offset);
+		--top-nav-offset: 0;
+		--bottom-margin: 44px;
+
 		display: flex;
-		height: calc(100vh - var(--top-nav-offset) - var(--bottom-margin));
 		position: sticky;
+		top: 24px;
+		width: 100%;
+		max-width: 50%;
+		height: calc(100vh - var(--bottom-margin));
+
 		&.minimized {
 			height: fit-content;
+			max-width: unset;
 			position: sticky;
 			top: unset;
 			bottom: var(--top-nav-offset);
@@ -292,21 +409,15 @@
 			box-shadow: var(--fx-shadow-s);
 		}
 
-		@media (--tablet-viewport) {
-			height: 50vh;
-			position: sticky;
-			top: unset;
-			bottom: var(--bottom-margin);
+		&.tablet-mode {
 			z-index: var(--z-floating);
-			box-shadow: var(--fx-shadow-s);
-		}
-
-		@media not (--tablet-viewport) {
-			&.full-screen {
-				--top-nav-offset: 20px;
-				top: var(--top-nav-offset);
-				height: calc(100dvh - var(--top-nav-offset) - var(--bottom-margin));
-			}
+			position: fixed;
+			max-width: unset;
+			height: 100dvh;
+			top: unset;
+			left: 0;
+			bottom: 0;
+			pointer-events: none;
 		}
 	}
 </style>

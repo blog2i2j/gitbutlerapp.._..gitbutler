@@ -18,6 +18,7 @@
 		content: ContentSection[];
 		tabSize?: number;
 		wrapText?: boolean;
+		diffFont?: string;
 		inlineUnifiedDiffs?: boolean;
 		selectedLines?: LineSelector[];
 		onLineClick?: (params: LineSelectionParams) => void;
@@ -33,6 +34,7 @@
 		onLineClick,
 		clearLineSelection,
 		wrapText = true,
+		diffFont,
 		tabSize = 4,
 		inlineUnifiedDiffs = false,
 		selectedLines,
@@ -52,15 +54,20 @@
 	const hasSelectedLines = $derived(renderRows.filter((row) => row.isSelected).length > 0);
 
 	let hoveringOverTable = $state(false);
+	function handleClearSelection() {
+		if (hasSelectedLines) clearLineSelection?.();
+		lineSelection.onEnd();
+	}
 </script>
 
 <tbody
 	onmouseenter={() => (hoveringOverTable = true)}
 	onmouseleave={() => (hoveringOverTable = false)}
+	ontouchstart={(ev) => lineSelection.onTouchStart(ev)}
+	ontouchmove={(ev) => lineSelection.onTouchMove(ev)}
+	ontouchend={() => lineSelection.onEnd()}
 	use:clickOutside={{
-		handler: () => {
-			if (hasSelectedLines) clearLineSelection?.();
-		}
+		handler: handleClearSelection
 	}}
 >
 	{#each renderRows as row, idx}
@@ -71,10 +78,11 @@
 			{lineSelection}
 			{tabSize}
 			{wrapText}
-			{hasSelectedLines}
+			{diffFont}
 			{numberHeaderWidth}
 			{onQuoteSelection}
 			{onCopySelection}
+			clearLineSelection={handleClearSelection}
 			{hoveringOverTable}
 		/>
 	{/each}

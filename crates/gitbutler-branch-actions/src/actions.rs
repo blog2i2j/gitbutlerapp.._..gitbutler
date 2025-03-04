@@ -6,8 +6,8 @@ use crate::move_commits;
 use crate::r#virtual::StackListResult;
 use crate::reorder::{self, StackOrder};
 use crate::upstream_integration::{
-    self, BaseBranchResolution, BaseBranchResolutionApproach, Resolution, StackStatuses,
-    UpstreamIntegrationContext,
+    self, BaseBranchResolution, BaseBranchResolutionApproach, IntegrationOutcome, Resolution,
+    StackStatuses, UpstreamIntegrationContext,
 };
 use crate::VirtualBranchHunkRangeMap;
 use crate::{
@@ -373,7 +373,9 @@ pub fn undo_commit(ctx: &CommandContext, stack_id: StackId, commit_oid: git2::Oi
     assure_open_workspace_mode(ctx).context("Undoing a commit requires open workspace mode")?;
     let mut guard = ctx.project().exclusive_worktree_access();
     let snapshot_tree = ctx.project().prepare_snapshot(guard.read_permission());
-    let result: Result<()> = crate::undo_commit::undo_commit(ctx, stack_id, commit_oid).map(|_| ());
+    let result: Result<()> =
+        crate::undo_commit::undo_commit(ctx, stack_id, commit_oid, guard.write_permission())
+            .map(|_| ());
     let _ = snapshot_tree.and_then(|snapshot_tree| {
         ctx.project().snapshot_commit_undo(
             snapshot_tree,
@@ -612,7 +614,7 @@ pub fn integrate_upstream(
     ctx: &CommandContext,
     resolutions: &[Resolution],
     base_branch_resolution: Option<BaseBranchResolution>,
-) -> Result<()> {
+) -> Result<IntegrationOutcome> {
     let mut guard = ctx.project().exclusive_worktree_access();
 
     let _ = ctx.project().create_snapshot(

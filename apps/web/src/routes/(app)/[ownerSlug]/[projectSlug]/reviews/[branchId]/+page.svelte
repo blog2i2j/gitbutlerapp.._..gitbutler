@@ -1,21 +1,19 @@
 <script lang="ts">
-	import ChangeIndexCard from '$lib/components/changes/ChangeIndexCard.svelte';
+	import BranchCommitsTable from '$lib/components/changes/BranchCommitsTable.svelte';
 	import Factoid from '$lib/components/infoFlexRow/Factoid.svelte';
 	import InfoFlexRow from '$lib/components/infoFlexRow/InfoFlexRow.svelte';
 	import CommitsGraph from '$lib/components/review/CommitsGraph.svelte';
+	import { updateFavIcon } from '$lib/utils/faviconUtils';
 	import { UserService } from '$lib/user/userService';
 	import BranchStatusBadge from '@gitbutler/shared/branches/BranchStatusBadge.svelte';
 	import { BranchService } from '@gitbutler/shared/branches/branchService';
 	import { getBranchReview } from '@gitbutler/shared/branches/branchesPreview.svelte';
 	import { lookupLatestBranchUuid } from '@gitbutler/shared/branches/latestBranchLookup.svelte';
 	import { LatestBranchLookupService } from '@gitbutler/shared/branches/latestBranchLookupService';
-	import {
-		BranchStatus,
-		getContributorsWithAvatars,
-		type Branch
-	} from '@gitbutler/shared/branches/types';
+	import { BranchStatus, type Branch } from '@gitbutler/shared/branches/types';
 	import { copyToClipboard } from '@gitbutler/shared/clipboard';
 	import { getContext } from '@gitbutler/shared/context';
+	import { getContributorsWithAvatars } from '@gitbutler/shared/contributors';
 	import Loading from '@gitbutler/shared/network/Loading.svelte';
 	import { isFound, and, map } from '@gitbutler/shared/network/loadable';
 	import { AppState } from '@gitbutler/shared/redux/store.svelte';
@@ -131,6 +129,12 @@
 	function copyLocation() {
 		copyToClipboard(location.href);
 	}
+
+	$effect(() => {
+		if (isFound(branch?.current)) {
+			updateFavIcon(branch.current.value?.reviewStatus);
+		}
+	});
 </script>
 
 {#snippet startReview(branch: Branch)}
@@ -140,14 +144,19 @@
 {/snippet}
 
 <svelte:head>
-	<title>Review: {data.ownerSlug}/{data.projectSlug}</title>
-	<meta property="og:title" content="GitButler Review: {data.ownerSlug}/{data.projectSlug}" />
-	<meta property="og:description" content="GitButler code review" />
+	{#if isFound(branch?.current)}
+		<title>{branch.current.value?.title}</title>
+		<meta property="og:title" content="GitButler Review: {branch.current.value?.title}" />
+		<meta property="og:description" content="GitButler code review" />
+	{:else}
+		<title>{data.ownerSlug}/{data.projectSlug}</title>
+		<meta property="og:title" content="GitButler Review: {data.ownerSlug}/{data.projectSlug}" />
+		<meta property="og:description" content="GitButler code review" />
+	{/if}
 </svelte:head>
 
 <Loading loadable={and([branchUuid?.current, branch?.current])}>
 	{#snippet children(branch)}
-		{console.log(branch)}
 		<div class="layout">
 			<div class="information">
 				<div class="heading">
@@ -227,31 +236,7 @@
 				</div>
 			</div>
 
-			<div>
-				<table class="commits-table">
-					<thead>
-						<tr>
-							<th><div>Status</div></th>
-							<th><div>Name</div></th>
-							<th><div class="header-right">Changes</div></th>
-							<th><div>Last update</div></th>
-							<th><div>Authors</div></th>
-							<th><div>Reviewers</div></th>
-							<th><div>Comments</div></th>
-						</tr>
-					</thead>
-					<tbody class="pretty">
-						{#each branch.patchIds || [] as changeId, index}
-							<ChangeIndexCard
-								{changeId}
-								params={data}
-								branchUuid={branch.uuid}
-								last={index === branch.patchIds.length - 1}
-							/>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+			<BranchCommitsTable {branch} {data} />
 		</div>
 	{/snippet}
 </Loading>
@@ -263,7 +248,9 @@
 		gap: var(--layout-col-gap);
 
 		@media (--desktop-small-viewport) {
-			grid-template-columns: 1fr;
+			grid-template-columns: unset;
+			display: flex;
+			flex-direction: column;
 		}
 	}
 
@@ -291,7 +278,7 @@
 	}
 
 	.summary-text {
-		line-height: 160%; /* 20.8px */
+		line-height: 160%;
 	}
 
 	.summary-placeholder {
@@ -299,9 +286,5 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 12px;
-	}
-
-	.header-right {
-		text-align: right;
 	}
 </style>
